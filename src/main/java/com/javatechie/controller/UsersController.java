@@ -1,9 +1,9 @@
 package com.javatechie.controller;
 
 import com.javatechie.Service.UsersService;
-import com.javatechie.entity.Client;
+import com.javatechie.auth.user.User;
+import com.javatechie.auth.user.UserRepository;
 import com.javatechie.entity.Conversation;
-import com.javatechie.repository.ClientRepository;
 import com.javatechie.repository.ConversationRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,20 +19,20 @@ import java.util.Map;
 public class UsersController {
 
     private final UsersService usersService;
-    private final ClientRepository clientRepository;
+    private final UserRepository userRepository;
     private final ConversationRepository conversationRepository;
 
     @Autowired
-    public  UsersController(UsersService usersService, ClientRepository clientRepository, ConversationRepository conversationRepository) {
+    public  UsersController(UsersService usersService, UserRepository userRepository, ConversationRepository conversationRepository) {
         this.usersService = usersService;
-        this.clientRepository = clientRepository;
+        this.userRepository = userRepository;
         this.conversationRepository = conversationRepository;
     }
 
     @Transactional
-    @GetMapping("/conversations/{clientId}")
-    public ResponseEntity<List<Conversation>> getConversations(@PathVariable Integer clientId) {
-        List<Conversation> conversations = conversationRepository.findByClientId(clientId);
+    @GetMapping("/conversations/{userId}")
+    public ResponseEntity<List<Conversation>> getConversations(@PathVariable Integer userId) {
+        List<Conversation> conversations = conversationRepository.findByUserId(userId);
         return new ResponseEntity<>(conversations, HttpStatus.OK);
     }
 
@@ -45,36 +45,21 @@ public class UsersController {
     @PostMapping("/update-plan")
     public ResponseEntity updatePlan(@RequestBody Map<String, String> credentials) {
         try {
-            Long clientId = Long.valueOf(credentials.get("clientId"));
+            Integer UserId = Integer.valueOf(credentials.get("userId"));
             Long planId = Long.valueOf(credentials.get("planId"));
             String cardToken = credentials.get("cardToken");
 
-            Client updatedClient = usersService.updatePlan(clientId, planId, cardToken);
+            Boolean success = usersService.updatePlan(UserId, planId, cardToken);
 
-            if (updatedClient != null) {
-                return ResponseEntity.ok(updatedClient);
+            if (success) {
+                return ResponseEntity.ok(planId);
             } else {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("client or plan not found");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User or plan not found");
             }
         } catch (NumberFormatException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid input format");
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error updating plan");
-        }
-    }
-
-    @GetMapping("client/{clientId}")
-    public ResponseEntity getClientById(@PathVariable Long clientId) {
-        try {
-            Client client = clientRepository.findById(clientId).orElse(null);
-            if (client != null) {
-                System.out.println("succsess : "+client);
-                return ResponseEntity.ok(client);
-            } else {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Client not found");
-            }
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error retrieving client");
         }
     }
 }

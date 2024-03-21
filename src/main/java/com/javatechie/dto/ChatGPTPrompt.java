@@ -5,5 +5,5 @@ import lombok.Data;
 @Data
 public class ChatGPTPrompt {
     String prompt;
-    Long userId;
+    Integer userId;
 }

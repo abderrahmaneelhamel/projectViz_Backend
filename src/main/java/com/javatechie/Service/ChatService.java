@@ -6,46 +6,47 @@ import com.javatechie.auth.user.UserRepository;
 import com.javatechie.dto.ChatGPTPrompt;
 import com.javatechie.dto.ChatGPTRequest;
 import com.javatechie.dto.ChatGptResponse;
-import com.javatechie.entity.Client;
 import com.javatechie.entity.Conversation;
 import com.javatechie.entity.UserResponse;
-import com.javatechie.repository.ClientRepository;
 import com.javatechie.repository.ConversationRepository;
 import com.javatechie.repository.UserResponseRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import net.sourceforge.plantuml.FileFormat;
 import net.sourceforge.plantuml.FileFormatOption;
 import net.sourceforge.plantuml.SourceStringReader;
+import org.springframework.web.client.RestTemplate;
+
 import java.io.ByteArrayOutputStream;
 import java.util.Base64;
 import java.util.concurrent.CompletableFuture;
 
 @Service
 public class ChatService {
-    private final ClientRepository clientRepository;
+    private final UserRepository userRepository;
     private final ConversationRepository conversationRepository;
     private final UserResponseRepository userResponseRepository;
     private final RestTemplate template;
 
     @Autowired
-    public ChatService(RestTemplate template, ClientRepository clientRepository, ConversationRepository conversationRepository, UserResponseRepository userResponseRepository){
+    public ChatService(RestTemplate template, UserRepository userRepository, ConversationRepository conversationRepository, UserResponseRepository userResponseRepository){
         this.template = template;
-        this.clientRepository = clientRepository;
+        this.userRepository = userRepository;
         this.conversationRepository = conversationRepository;
         this.userResponseRepository = userResponseRepository;
     }
 
     private enum ConversationState {
+        ENHANCE_INPUT,
         PROJECT_ANALYSIS,
         TECH_RECOMMENDATION,
         UML_GENERATION
     }
 
-    private ConversationState currentState = ConversationState.PROJECT_ANALYSIS;
+    private ConversationState currentState = ConversationState.ENHANCE_INPUT;
+    private String enhancedInput;
     private String projectAnalysisResponse;
     private String techRecommendationResponse;
     private String ClassUmlGenerationResponse;
@@ -61,39 +62,45 @@ public class ChatService {
 
 
     public UserResponse processProjectDescription(ChatGPTPrompt chatGPTPrompt)  throws UpgradeplanException {
-    Client client = clientRepository.findById(chatGPTPrompt.getUserId()).orElse(null);
-    if (client != null) {
-        int count = conversationRepository.findByClientIdLite(client.getId()).size();
-        int allowedConversations= client.getPlan().getAllowedConversations();
+    User user = userRepository.findById(chatGPTPrompt.getUserId()).orElse(null);
+    if (user != null) {
+        int count = conversationRepository.findByUserIdLite(user.getId()).size();
+        int allowedConversations= user.getPlan().getAllowedConversations();
             if (count < allowedConversations || allowedConversations == -1){
                 String projectDescription = chatGPTPrompt.getPrompt();
-                CompletableFuture<String> firstCall = CompletableFuture.supplyAsync(() -> processProjectAnalysis(projectDescription))
+                CompletableFuture<String> enhancedInput = CompletableFuture.supplyAsync(() -> enhanceUserInput(projectDescription))
+                        .thenApply(response -> {
+                            this.enhancedInput = response;
+                            currentState = ConversationState.PROJECT_ANALYSIS;
+                            return response;
+                        });
+                CompletableFuture<String> firstCall = CompletableFuture.supplyAsync(() -> processProjectAnalysis(this.enhancedInput))
                         .thenApply(response -> {
                             this.projectAnalysisResponse = response;
                             currentState = ConversationState.TECH_RECOMMENDATION;
                             return response;
                         });
 
-                CompletableFuture<String> secondCall = firstCall.thenApply(response -> processTechRecommendation(projectDescription))
+                CompletableFuture<String> secondCall = firstCall.thenApply(response -> processTechRecommendation(this.enhancedInput))
                         .thenApply(response -> {
                             this.techRecommendationResponse = response;
                             currentState = ConversationState.UML_GENERATION;
                             return response;
                         });
 
-                CompletableFuture<String> thirdCall = secondCall.thenApply(response -> processClassUMLGeneration(projectDescription))
+                CompletableFuture<String> thirdCall = secondCall.thenApply(response -> processClassUMLGeneration(this.enhancedInput))
                         .thenApply(response -> {
                             this.ClassUmlGenerationResponse = response;
                             currentState = ConversationState.UML_GENERATION;
                             return response;
                         });
-                CompletableFuture<String> fourthCall = thirdCall.thenApply(response -> processSequenceUMLGeneration(projectDescription))
+                CompletableFuture<String> fourthCall = thirdCall.thenApply(response -> processSequenceUMLGeneration(this.enhancedInput))
                         .thenApply(response -> {
                             this.SequenceUmlGenerationResponse = response;
                             currentState = ConversationState.UML_GENERATION;
                             return response;
                         });
-                CompletableFuture<String> fifthCall = fourthCall.thenApply(response -> processUseCaseUMLGeneration(projectDescription))
+                CompletableFuture<String> fifthCall = fourthCall.thenApply(response -> processUseCaseUMLGeneration(this.enhancedInput))
                         .thenApply(response -> {
                             this.UseCaseUmlGenerationResponse = response;
                             currentState = ConversationState.PROJECT_ANALYSIS;
@@ -101,13 +108,11 @@ public class ChatService {
                             return response;
                         });
 
-                // Wait for all CompletableFuture to complete
-                CompletableFuture<Void> allCalls = CompletableFuture.allOf(firstCall, secondCall, thirdCall, fourthCall, fifthCall);
+                CompletableFuture<Void> allCalls = CompletableFuture.allOf(enhancedInput,firstCall, secondCall, thirdCall, fourthCall, fifthCall);
 
-                // Block and wait for completion
                 allCalls.join();
 
-                addUserToConversation(this.finalResponse,chatGPTPrompt,client);
+                addUserToConversation(this.finalResponse,chatGPTPrompt,user);
                 return finalResponse;
             }else{
                 throw new UpgradeplanException("You have reached the maximum number of conversations for this plan");
@@ -117,14 +122,21 @@ public class ChatService {
         }
     }
 
-    private void addUserToConversation(UserResponse userResponse, ChatGPTPrompt chatGPTPrompt, Client client) {
+    private void addUserToConversation(UserResponse userResponse, ChatGPTPrompt chatGPTPrompt, User User) {
         UserResponse Response = userResponseRepository.save(userResponse);
-        System.out.println(client);
-        conversationRepository.save(new Conversation(client,chatGPTPrompt.getPrompt(),Response));
+        System.out.println(Response);
+        conversationRepository.save(new Conversation(User,chatGPTPrompt.getPrompt(),Response));
+    }
+
+    private String enhanceUserInput(String userInput) {
+        String enhancementPrompt = "As an AI language model, I need you to enhance and clarify the following project description. Provide additional details, rephrase sentences for clarity, and ensure the overall coherence and completeness of the description. Here is the project description:\n\n" + userInput;
+        String enhancedInput = sendPromptToAI(enhancementPrompt);
+        return enhancedInput;
     }
 
     public String processProjectAnalysis(String projectDescription) {
-        String analysisPrompt = "Act as a Software Engineer and provide a comprehensive analysis of the project, focusing on the main subject and all relevant information crucial for its successful achievement. Your analysis should encompass detailed information about the main subject, including its significance, objectives, potential challenges, and strategies for overcoming them. Additionally, consider including relevant supporting details, such as resources, timelines, and potential collaborators, that are essential for the project's successful implementation. Your analysis should be thorough, informative, and well-organized, providing a holistic view of the project and its key components : " + projectDescription;
+        String analysisPrompt = "Imagine yourself as an experienced Software Engineer tasked with conducting a thorough analysis of a project. Your primary focus is to extract and understand the core idea or concept behind the project described below. Provide detailed insights into its significance, objectives, potential challenges, and strategies for overcoming them. Additionally, include any relevant supporting details such as required resources, timelines, and potential collaborators necessary for successful implementation. Your analysis should be comprehensive, informative, and well-structured, offering a clear understanding of the project's main components and objectives.\n\n" +
+                projectDescription;
         return sendPromptToAI(analysisPrompt);
     }
 
@@ -135,9 +147,8 @@ public class ChatService {
 
     public String processClassUMLGeneration(String umlGeneration) {
 
-        String umlPrompt = "Act as a Software Engineer and a UML expert and make a good, complete and well though of UML class diagram for the database with all the attributes and the methods for this project, make it very professional and complex, make it in a plantUML format: " + umlGeneration;
+        String umlPrompt = "As an Experienced Software Engineer and UML Architect, your task is to design a detailed UML class diagram for our database architecture. Ensure the diagram reflects database entities, attributes, methods, and relationships accurately. Incorporate SOLID principles, design patterns, and domain-driven design concepts to create a robust and maintainable diagram. Provide clear annotations and comments in the PlantUML representation to convey your expertise and forward-thinking approach, make it in a plantUML format for this project : " + umlGeneration;
         String umlResponse = sendPromptToAI(umlPrompt);
-        System.out.println(umlResponse);
 
         // Find the index of @startuml
         int startUMLIndex = umlResponse.indexOf("@startuml");
@@ -172,9 +183,8 @@ public class ChatService {
 
     public String processSequenceUMLGeneration(String umlGeneration) {
 
-        String umlPrompt = "Act as a Software Engineer and a UML expert and make a good, complete and well though of UML sequence diagram for this project, make it very professional and complex, make it in a plantUML format: " + umlGeneration;
+        String umlPrompt = "In your role as a Software Architect and System Designer, your objective is to create a precise UML sequence diagram depicting system interactions. Ensure the diagram captures all system components, interactions, and message flows accurately. Consider scenarios like asynchronous communication, error handling, concurrency, and alternative paths to provide a comprehensive view. Present the diagram in a concise and readable PlantUML format with detailed lifelines and message annotations, reflecting your methodical approach and attention to detail, make it in a plantUML format for this project : " + umlGeneration;
         String umlResponse = sendPromptToAI(umlPrompt);
-        System.out.println(umlResponse);
 
         // Find the index of @startuml
         int startUMLIndex = umlResponse.indexOf("@startuml");
@@ -210,9 +220,8 @@ public class ChatService {
 
     public String processUseCaseUMLGeneration(String umlGeneration) {
 
-        String umlPrompt = "Act as a Software Engineer and a UML expert and make a good, complete and well though of UML Use Case diagram for this project, make it very professional and complex, make it in a plantUML format: " + umlGeneration;
+        String umlPrompt = "In your role as a Software Engineer and Requirements Analyst, your objective is to develop a comprehensive UML use case diagram encompassing all project functionalities and user interactions. Ensure the diagram clearly identifies actors, use cases, relationships, and alternate flows. Craft a structured and intuitive PlantUML diagram that reflects your analytical mindset and commitment to delivering a user-centric solution, make it in a plantUML format for this project : " + umlGeneration;
         String umlResponse = sendPromptToAI(umlPrompt);
-        System.out.println(umlResponse);
 
         // Find the index of @startuml
         int startUMLIndex = umlResponse.indexOf("@startuml");
@@ -248,7 +257,6 @@ public class ChatService {
     private String sendPromptToAI(String prompt) {
         ChatGPTRequest request = new ChatGPTRequest(model, prompt);
         ResponseEntity<ChatGptResponse> responseEntity = template.postForEntity(apiURL, request, ChatGptResponse.class);
-        System.out.println(responseEntity.getBody().getChoices().get(0).getMessage().getContent());
         return responseEntity.getBody().getChoices().get(0).getMessage().getContent();
     }
 }

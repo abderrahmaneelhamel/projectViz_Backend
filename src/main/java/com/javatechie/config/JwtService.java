@@ -1,8 +1,6 @@
 package com.javatechie.config;
 
 import com.javatechie.auth.user.User;
-import com.javatechie.entity.Client;
-import com.javatechie.repository.Migration;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -43,7 +41,7 @@ public class JwtService {
     claims.put("name", user.getName());
     claims.put("email", user.getEmail());
     claims.put("role", user.getRole());
-
+    claims.put("planId",user.getPlan().getId());
     return buildToken(claims, userDetails, jwtExpiration);
   }
 

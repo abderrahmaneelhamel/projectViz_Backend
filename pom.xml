@@ -129,6 +129,18 @@
 			<scope>runtime</scope>
 			<optional>true</optional>
 		</dependency>
+		<dependency>
+			<groupId>net.sourceforge.plantuml</groupId>
+			<artifactId>plantuml</artifactId>
+			<version>8059</version>
+		</dependency>
+		<dependency>
+			<groupId>com.github.jeluard</groupId>
+			<artifactId>plantuml-maven-plugin</artifactId>
+			<version>7954</version>
+		</dependency>
+
+
 <!--		<dependency>-->
 <!--			<groupId>org.springframework.ai</groupId>-->
 <!--			<artifactId>spring-ai-openai-spring-boot-starter</artifactId>-->
@@ -146,7 +158,7 @@
 					</image>
 				</configuration>
 			</plugin>
-			<plugin>
+						<plugin>
 				<groupId>com.github.jeluard</groupId>
 				<artifactId>plantuml-maven-plugin</artifactId>
 				<version>7954</version>

@@ -1,5 +1,6 @@
 package com.javatechie.entity;
 
+import com.javatechie.auth.user.User;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -20,15 +21,20 @@ public class Conversation {
         Prompt = prompt;
     }
 
-    public Conversation(Client client, String prompt, UserResponse response) {
-        this.client = client;
+    public Conversation(User user, String prompt, UserResponse response) {
+        this.user = user;
+        Prompt = prompt;
+        Response = response;
+    }
+    public Conversation(Long id,String prompt, UserResponse response) {
+        this.id = id;
         Prompt = prompt;
         Response = response;
     }
 
     @ManyToOne
-    @JoinColumn(name = "client_id")
-    Client client;
+    @JoinColumn(name = "user_id")
+    User user;
 
     String Prompt;
 

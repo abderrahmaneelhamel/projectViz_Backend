@@ -2,6 +2,7 @@ package com.javatechie.auth.user;
 
 
 import com.javatechie.auth.token.Token;
+import com.javatechie.entity.Plan;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -34,12 +35,17 @@ public class User implements UserDetails {
   @OneToMany(mappedBy = "user")
   private List<Token> tokens;
 
-  public User(Long id, String name, String email, String password,Role role) {
+  @ManyToOne
+  @JoinColumn(name = "plan_id")
+  Plan plan;
+
+  public User(Long id, String name, String email, String password,Role role,Plan plan) {
     this.id = id.intValue();
     this.name = name;
     this.email = email;
     this.password = password;
     this.role = role;
+    this.plan = plan;
   }
 
   @Override

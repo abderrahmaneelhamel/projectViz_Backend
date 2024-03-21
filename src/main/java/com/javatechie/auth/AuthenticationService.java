@@ -4,14 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javatechie.auth.token.Token;
 import com.javatechie.auth.token.TokenRepository;
 import com.javatechie.auth.token.TokenType;
+import com.javatechie.auth.user.Role;
 import com.javatechie.auth.user.User;
 import com.javatechie.auth.user.UserRepository;
 import com.javatechie.config.JwtService;
-import com.javatechie.entity.Admin;
-import com.javatechie.entity.Client;
 import com.javatechie.entity.Plan;
-import com.javatechie.repository.AdminRepository;
-import com.javatechie.repository.ClientRepository;
 import com.javatechie.repository.Migration;
 import com.javatechie.repository.PlanRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -33,33 +30,21 @@ public class AuthenticationService {
   private final PasswordEncoder passwordEncoder;
   private final JwtService jwtService;
   private final AuthenticationManager authenticationManager;
-  private final AdminRepository adminRepository;
-  private final ClientRepository clientRepository;
   private final PlanRepository planRepository;
   private final Migration migration;
 
   public AuthenticationResponse register(RegisterRequest request){
     migration.populatePlans();
-    System.out.println(request);
+    Plan plan = planRepository.findById(1L).orElse(null);
     var user = User.builder()
         .name(request.getFullName())
         .email(request.getEmail())
         .password(passwordEncoder.encode(request.getPassword()))
-        .role(request.getRole())
+        .role(Role.CLIENT)
+        .plan(plan)
         .build();
     var savedUser = userRepository.save(user);
     var jwtToken = jwtService.generateToken(savedUser,savedUser);
-    switch (request.getRole()) {
-      case ADMIN:
-        Admin admin = new Admin(0L, request.getFullName() ,request.getEmail(),passwordEncoder.encode(request.getPassword()),request.getRole());
-        adminRepository.save(admin);
-        break;
-      case CLIENT:
-        Plan plan = planRepository.findById(1L).orElse(null);
-        Client client = new Client(0L, request.getFullName() ,request.getEmail(),passwordEncoder.encode(request.getPassword()),request.getRole(),plan);
-        clientRepository.save(client);
-        break;
-    }
     var refreshToken = jwtService.generateRefreshToken(savedUser);
     saveUserToken(savedUser, jwtToken);
     return AuthenticationResponse.builder()
